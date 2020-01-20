@@ -33,7 +33,6 @@
 
 @interface XLFormRowDescriptor(_XLFormViewController)
 
-@property (readonly) NSArray * observers;
 -(BOOL)evaluateIsDisabled;
 -(BOOL)evaluateIsHidden;
 
@@ -47,7 +46,7 @@
 
 @interface XLFormDescriptor (_XLFormViewController)
 
-@property NSMutableDictionary* rowObservers;
+@property (atomic, strong) NSMutableDictionary* rowObservers;
 
 @end
 
@@ -57,8 +56,8 @@
     NSNumber *_oldBottomTableContentInset;
     CGRect _keyboardFrame;
 }
-@property UITableViewStyle tableViewStyle;
-@property (nonatomic) XLFormRowNavigationAccessoryView * navigationAccessoryView;
+@property (nonatomic, assign) UITableViewStyle tableViewStyle;
+@property (nonatomic, strong) XLFormRowNavigationAccessoryView * navigationAccessoryView;
 
 @end
 
@@ -75,7 +74,7 @@
 
 -(instancetype)initWithForm:(XLFormDescriptor *)form style:(UITableViewStyle)style
 {
-    self = [super initWithNibName:nil bundle:nil];
+    self = [self initWithNibName:nil bundle:nil];
     if (self){
         _tableViewStyle = style;
         _form = form;
@@ -83,25 +82,55 @@
     return self;
 }
 
-- (void)dealloc
+-(instancetype)initWithNibName:(NSString *)nibNameOrNil bundle:(NSBundle *)nibBundleOrNil
 {
-    self.tableView.delegate = nil;
-    self.tableView.dataSource = nil;
+    self = [super initWithNibName:nibNameOrNil bundle:nibBundleOrNil];
+    if (self){
+        _form = nil;
+        _tableViewStyle = UITableViewStyleGrouped;
+    }
+    return self;
 }
 
-- (void)viewDidLoad
+-(instancetype)initWithCoder:(NSCoder *)aDecoder
+{
+    self = [super initWithCoder:aDecoder];
+    if (self) {
+        _form = nil;
+        _tableViewStyle = UITableViewStyleGrouped;
+    }
+    
+    return self;
+}
+
+-(void)dealloc
+{
+    [self removeObserverFromController];
+
+    self.tableView.delegate = nil;
+    self.tableView.dataSource = nil;
+    
+    self.form.delegate = nil;
+    
+    self.navigationAccessoryView = nil;
+}
+
+-(void)viewDidLoad
 {
     [super viewDidLoad];
-    if (!self.tableView){
-        self.tableView = [[UITableView alloc] initWithFrame:self.view.bounds
+    
+    UITableView *tableView = self.tableView;
+    if (!tableView){
+        tableView = [[UITableView alloc] initWithFrame:self.view.bounds
                                                       style:self.tableViewStyle];
-        self.tableView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-        if([self.tableView respondsToSelector:@selector(cellLayoutMarginsFollowReadableWidth)]){
-            self.tableView.cellLayoutMarginsFollowReadableWidth = NO;
+        tableView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+        if([tableView respondsToSelector:@selector(cellLayoutMarginsFollowReadableWidth)]){
+            tableView.cellLayoutMarginsFollowReadableWidth = NO;
         }
     }
-    if (!self.tableView.superview){
-        [self.view addSubview:self.tableView];
+    if (!tableView.superview){
+        [self.view addSubview:tableView];
+        self.tableView = tableView;
     }
     if (!self.tableView.delegate){
         self.tableView.delegate = self;
@@ -126,44 +155,18 @@
 {
     [super viewWillAppear:animated];
     NSIndexPath *selected = [self.tableView indexPathForSelectedRow];
-    if (selected){
+    if (selected) {
         // Trigger a cell refresh
         XLFormRowDescriptor * rowDescriptor = [self.form formRowAtIndex:selected];
         [self updateFormRow:rowDescriptor];
         [self.tableView selectRowAtIndexPath:selected animated:NO scrollPosition:UITableViewScrollPositionNone];
         [self.tableView deselectRowAtIndexPath:selected animated:YES];
     }
-    [[NSNotificationCenter defaultCenter] addObserver:self
-                                             selector:@selector(contentSizeCategoryChanged:)
-                                                 name:UIContentSizeCategoryDidChangeNotification
-                                               object:nil];
-    [[NSNotificationCenter defaultCenter] addObserver:self
-                                             selector:@selector(keyboardWillShow:)
-                                                 name:UIKeyboardWillShowNotification
-                                               object:nil];
-
-    [[NSNotificationCenter defaultCenter] addObserver:self
-                                             selector:@selector(keyboardWillHide:)
-                                                 name:UIKeyboardWillHideNotification
-                                               object:nil];
-
+    
+    [self addObserverToController];
 }
 
--(void)viewDidDisappear:(BOOL)animated
-{
-    [super viewDidDisappear:animated];
-    [[NSNotificationCenter defaultCenter] removeObserver:self
-                                                    name:UIContentSizeCategoryDidChangeNotification
-                                                  object:nil];
-    [[NSNotificationCenter defaultCenter] removeObserver:self
-                                                    name:UIKeyboardWillShowNotification
-                                                  object:nil];
-    [[NSNotificationCenter defaultCenter] removeObserver:self
-                                                    name:UIKeyboardWillHideNotification
-                                                  object:nil];
-}
-
-- (void)viewDidAppear:(BOOL)animated
+-(void)viewDidAppear:(BOOL)animated
 {
     [super viewDidAppear:animated];
     if (self.form.assignFirstResponderOnShow) {
@@ -172,11 +175,40 @@
     }
 }
 
+-(void)viewDidDisappear:(BOOL)animated
+{
+    [super viewDidDisappear:animated];
+    
+    [self removeObserverFromController];
+}
+
 - (void)didReceiveMemoryWarning
 {
     [super didReceiveMemoryWarning];
 }
 
+-(void)addObserverToController {
+    NSNotificationCenter *nc = [NSNotificationCenter defaultCenter];
+    [nc addObserver:self
+           selector:@selector(contentSizeCategoryChanged:)
+               name:UIContentSizeCategoryDidChangeNotification
+             object:nil];
+    [nc addObserver:self
+           selector:@selector(keyboardWillShow:)
+               name:UIKeyboardWillShowNotification
+             object:nil];
+    [nc addObserver:self
+           selector:@selector(keyboardWillHide:)
+               name:UIKeyboardWillHideNotification
+             object:nil];
+}
+
+-(void)removeObserverFromController {
+    NSNotificationCenter *nc = [NSNotificationCenter defaultCenter];
+    [nc removeObserver:self name:UIContentSizeCategoryDidChangeNotification object:nil];
+    [nc removeObserver:self name:UIKeyboardWillShowNotification object:nil];
+    [nc removeObserver:self name:UIKeyboardWillHideNotification object:nil];
+}
 #pragma mark - CellClasses
 
 +(NSMutableDictionary *)cellClassesForRowDescriptorTypes
@@ -195,7 +227,6 @@
                                                XLFormRowDescriptorTypePassword: [XLFormTextFieldCell class],
                                                XLFormRowDescriptorTypeNumber: [XLFormTextFieldCell class],
                                                XLFormRowDescriptorTypeInteger: [XLFormTextFieldCell class],
-                                               XLFormRowDescriptorTypeIntegerText: [XLFormTextFieldCell class],
                                                XLFormRowDescriptorTypeDecimal: [XLFormTextFieldCell class],
                                                XLFormRowDescriptorTypeZipCode: [XLFormTextFieldCell class],
                                                XLFormRowDescriptorTypeSelectorPush: [XLFormSelectorCell class],
@@ -294,8 +325,8 @@
 
 -(void)updateAfterDependentRowChanged:(XLFormRowDescriptor *)formRow
 {
-    NSMutableArray* revaluateHidden   = self.form.rowObservers[[formRow.tag formKeyForPredicateType:XLPredicateTypeHidden]];
-    NSMutableArray* revaluateDisabled = self.form.rowObservers[[formRow.tag formKeyForPredicateType:XLPredicateTypeDisabled]];
+    NSMutableArray* revaluateHidden   = [self.form.rowObservers[[formRow.tag formKeyForPredicateType:XLPredicateTypeHidden]] mutableCopy];
+    NSMutableArray* revaluateDisabled = [self.form.rowObservers[[formRow.tag formKeyForPredicateType:XLPredicateTypeDisabled]] mutableCopy];
     for (id object in revaluateDisabled) {
         if ([object isKindOfClass:[NSString class]]) {
             XLFormRowDescriptor* row = [self.form formRowWithTag:object];
@@ -414,9 +445,10 @@
     XLFormSectionDescriptor * multivaluedFormSection = formRow.sectionDescriptor;
     XLFormRowDescriptor * formRowDescriptor = [self formRowFormMultivaluedFormSection:multivaluedFormSection];
     [multivaluedFormSection addFormRow:formRowDescriptor];
+    __weak typeof(self) weak = self;
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.02 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        self.tableView.editing = !self.tableView.editing;
-        self.tableView.editing = !self.tableView.editing;
+        weak.tableView.editing = !weak.tableView.editing;
+        weak.tableView.editing = !weak.tableView.editing;
     });
     UITableViewCell<XLFormDescriptorCell> * cell = (UITableViewCell<XLFormDescriptorCell> *)[formRowDescriptor cellForFormController:self];
     if ([cell formDescriptorCellCanBecomeFirstResponder]){
@@ -485,47 +517,44 @@
     UIView * firstResponderView = [self.tableView findFirstResponder];
     UITableViewCell<XLFormDescriptorCell> * cell = [firstResponderView formDescriptorCell];
     if (cell){
-        _oldBottomTableContentInset = @(self.tableView.contentInset.bottom);
         NSDictionary *keyboardInfo = [notification userInfo];
-        _keyboardFrame = [keyboardInfo[UIKeyboardFrameEndUserInfoKey] CGRectValue];
-        CGFloat newBottomInset = firstResponderView.inputAccessoryView != nil ? _keyboardFrame.size.height + firstResponderView.inputAccessoryView.frame.size.height: _keyboardFrame.size.height;
-        
-        if ([_oldBottomTableContentInset floatValue] > newBottomInset) {
-            newBottomInset = [_oldBottomTableContentInset floatValue];
-        }
-        
-        self.tableView.contentInset = UIEdgeInsetsMake(self.tableView.contentInset.top,
-                                                       self.tableView.contentInset.left,
-                                                       newBottomInset,
-                                                       self.tableView.contentInset.right);
-        self.tableView.scrollIndicatorInsets = UIEdgeInsetsMake(self.tableView.scrollIndicatorInsets.top,
-                                                                self.tableView.scrollIndicatorInsets.left,
-                                                                newBottomInset,
-                                                                self.tableView.scrollIndicatorInsets.right);
-        dispatch_async(dispatch_get_main_queue(), ^{
+        _keyboardFrame = [self.tableView.window convertRect:[keyboardInfo[UIKeyboardFrameEndUserInfoKey] CGRectValue] toView:self.tableView.superview];
+        CGFloat newBottomInset = self.tableView.frame.origin.y + self.tableView.frame.size.height - _keyboardFrame.origin.y;
+        UIEdgeInsets tableContentInset = self.tableView.contentInset;
+        UIEdgeInsets tableScrollIndicatorInsets = self.tableView.scrollIndicatorInsets;
+        _oldBottomTableContentInset = _oldBottomTableContentInset ?: @(tableContentInset.bottom);
+        if (newBottomInset > [_oldBottomTableContentInset floatValue]){
+            tableContentInset.bottom = newBottomInset;
+            tableScrollIndicatorInsets.bottom = tableContentInset.bottom;
+            [UIView beginAnimations:nil context:nil];
+            [UIView setAnimationDuration:[keyboardInfo[UIKeyboardAnimationDurationUserInfoKey] doubleValue]];
+            [UIView setAnimationCurve:[keyboardInfo[UIKeyboardAnimationCurveUserInfoKey] intValue]];
+            self.tableView.contentInset = tableContentInset;
+            self.tableView.scrollIndicatorInsets = tableScrollIndicatorInsets;
             NSIndexPath *selectedRow = [self.tableView indexPathForCell:cell];
-            [self.tableView scrollToRowAtIndexPath:selectedRow atScrollPosition:UITableViewScrollPositionNone animated:YES];
-        });
+            [self.tableView scrollToRowAtIndexPath:selectedRow atScrollPosition:UITableViewScrollPositionNone animated:NO];
+            [UIView commitAnimations];
+        }
     }
 }
 
 - (void)keyboardWillHide:(NSNotification *)notification
 {
-    NSDictionary *keyboardInfo = [notification userInfo];
     UIView * firstResponderView = [self.tableView findFirstResponder];
     UITableViewCell<XLFormDescriptorCell> * cell = [firstResponderView formDescriptorCell];
     if (cell){
+        _keyboardFrame = CGRectZero;
+        NSDictionary *keyboardInfo = [notification userInfo];
+        UIEdgeInsets tableContentInset = self.tableView.contentInset;
+        UIEdgeInsets tableScrollIndicatorInsets = self.tableView.scrollIndicatorInsets;
+        tableContentInset.bottom = [_oldBottomTableContentInset floatValue];
+        tableScrollIndicatorInsets.bottom = tableContentInset.bottom;
+        _oldBottomTableContentInset = nil;
         [UIView beginAnimations:nil context:nil];
         [UIView setAnimationDuration:[keyboardInfo[UIKeyboardAnimationDurationUserInfoKey] doubleValue]];
         [UIView setAnimationCurve:[keyboardInfo[UIKeyboardAnimationCurveUserInfoKey] intValue]];
-        self.tableView.contentInset = UIEdgeInsetsMake(self.tableView.contentInset.top,
-                                                       self.tableView.contentInset.left,
-                                                       [_oldBottomTableContentInset floatValue],
-                                                       self.tableView.contentInset.right);
-        self.tableView.scrollIndicatorInsets = UIEdgeInsetsMake(self.tableView.scrollIndicatorInsets.top,
-                                                                self.tableView.scrollIndicatorInsets.left,
-                                                                [_oldBottomTableContentInset floatValue],
-                                                                self.tableView.scrollIndicatorInsets.right);
+        self.tableView.contentInset = tableContentInset;
+        self.tableView.scrollIndicatorInsets = tableScrollIndicatorInsets;
         [UIView commitAnimations];
     }
 }
@@ -551,18 +580,24 @@
 -(XLFormBaseCell *)updateFormRow:(XLFormRowDescriptor *)formRow
 {
     XLFormBaseCell * cell = [formRow cellForFormController:self];
-    [self configureCell:cell];
-    [cell setNeedsUpdateConstraints];
-    [cell setNeedsLayout];
+    if (cell != nil) {
+        [self configureCell:cell];
+        [cell setNeedsUpdateConstraints];
+        [cell setNeedsLayout];
+    }
     return cell;
 }
 
 -(void)configureCell:(XLFormBaseCell*) cell
 {
     [cell update];
-    [cell.rowDescriptor.cellConfig enumerateKeysAndObjectsUsingBlock:^(NSString *keyPath, id value, BOOL * __unused stop) {
-        [cell setValue:(value == [NSNull null]) ? nil : value forKeyPath:keyPath];
-    }];
+
+    if(cell.rowDescriptor != nil && cell.rowDescriptor.cellConfig != nil) {
+        [cell.rowDescriptor.cellConfig enumerateKeysAndObjectsUsingBlock:^(NSString *keyPath, id value, BOOL * __unused stop) {
+            [cell setValue:(value == [NSNull null]) ? nil : value forKeyPath:keyPath];
+        }];
+    }
+
     if (cell.rowDescriptor.isDisabled){
         [cell.rowDescriptor.cellConfigIfDisabled enumerateKeysAndObjectsUsingBlock:^(NSString *keyPath, id value, BOOL * __unused stop) {
             [cell setValue:(value == [NSNull null]) ? nil : value forKeyPath:keyPath];
@@ -633,9 +668,10 @@
 #pragma GCC diagnostic pop
     // update the accessory view
     [self inputAccessoryViewForRowDescriptor:row];
+    __weak typeof(self) weak = self;
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.05 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        self.tableView.editing = !self.tableView.editing;
-        self.tableView.editing = !self.tableView.editing;
+        weak.tableView.editing = !weak.tableView.editing;
+        weak.tableView.editing = !weak.tableView.editing;
     });
 
 }
@@ -650,9 +686,10 @@
                 [self.tableView endEditing:YES];
         }
         [multivaluedFormRow.sectionDescriptor removeFormRowAtIndex:indexPath.row];
+        __weak typeof(self) weak = self;
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.02 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-            self.tableView.editing = !self.tableView.editing;
-            self.tableView.editing = !self.tableView.editing;
+            weak.tableView.editing = !weak.tableView.editing;
+            weak.tableView.editing = !weak.tableView.editing;
         });
         if (firstResponder){
             UITableViewCell<XLFormDescriptorCell> * firstResponderCell = [firstResponder formDescriptorCell];
@@ -669,9 +706,10 @@
         else{
             XLFormRowDescriptor * formRowDescriptor = [self formRowFormMultivaluedFormSection:multivaluedFormSection];
             [multivaluedFormSection addFormRow:formRowDescriptor];
+            __weak typeof(self) weak = self;
             dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.02 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-                self.tableView.editing = !self.tableView.editing;
-                self.tableView.editing = !self.tableView.editing;
+                weak.tableView.editing = !weak.tableView.editing;
+                weak.tableView.editing = !weak.tableView.editing;
             });
             [self.tableView scrollToRowAtIndexPath:[NSIndexPath indexPathForRow:indexPath.row + 1 inSection:indexPath.section] atScrollPosition:UITableViewScrollPositionBottom animated:YES];
             UITableViewCell<XLFormDescriptorCell> * cell = (UITableViewCell<XLFormDescriptorCell> *)[formRowDescriptor cellForFormController:self];
@@ -684,19 +722,15 @@
 
 #pragma mark - UITableViewDelegate
 
-#define ENSURE_VALID_SECTION if (section >= [self.form.formSections count]) return nil
 -(NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section
 {
-    ENSURE_VALID_SECTION;
     return [[self.form.formSections objectAtIndex:section] title];
 }
 
 -(NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section
 {
-    ENSURE_VALID_SECTION;
     return [[self.form.formSections objectAtIndex:section] footerTitle];
 }
-#undef ENSURE_VALID_SECTION
 
 -(CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath
 {

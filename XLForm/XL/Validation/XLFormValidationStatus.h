@@ -27,22 +27,16 @@
 
 #import "XLFormRowDescriptor.h"
 
-NS_ASSUME_NONNULL_BEGIN
-
 @interface XLFormValidationStatus : NSObject
 
-@property (nonatomic, copy, nullable) NSString *msg;
+@property (nonatomic, copy) NSString *msg;
 @property (nonatomic, assign) BOOL isValid;
-@property (nonatomic, weak, nullable) XLFormRowDescriptor *rowDescriptor;
+@property (nonatomic, weak) XLFormRowDescriptor *rowDescriptor;
 
-//-(id)initWithMsg:(NSString*)msg andStatus:(BOOL)isValid;
--(id)initWithMsg:(nullable NSString*)msg status:(BOOL)isValid rowDescriptor:(nullable XLFormRowDescriptor *)row;
+//-(instancetype)initWithMsg:(NSString*)msg andStatus:(BOOL)isValid;
+-(instancetype)initWithMsg:(NSString*)msg status:(BOOL)isValid rowDescriptor:(XLFormRowDescriptor *)row;
 
 //+(XLFormValidationStatus *)formValidationStatusWithMsg:(NSString *)msg status:(BOOL)status;
-+(XLFormValidationStatus *)formValidationStatusWithMsg:(nullable NSString *)msg
-                                                status:(BOOL)status
-                                         rowDescriptor:(nullable XLFormRowDescriptor *)row;
++(XLFormValidationStatus *)formValidationStatusWithMsg:(NSString *)msg status:(BOOL)status rowDescriptor:(XLFormRowDescriptor *)row;
 
 @end
-
-NS_ASSUME_NONNULL_END
