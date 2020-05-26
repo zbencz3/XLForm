@@ -31,9 +31,9 @@ NS_ASSUME_NONNULL_BEGIN
 
 @interface XLFormValidationStatus : NSObject
 
-@property (nonatomic, copy, nullable) NSString *msg;
+@property (nonatomic, copy) NSString *msg;
 @property (nonatomic, assign) BOOL isValid;
-@property (nonatomic, weak, nullable) XLFormRowDescriptor *rowDescriptor;
+@property (nonatomic, weak) XLFormRowDescriptor *rowDescriptor;
 
 //-(id)initWithMsg:(NSString*)msg andStatus:(BOOL)isValid;
 -(id)initWithMsg:(nullable NSString*)msg status:(BOOL)isValid rowDescriptor:(nullable XLFormRowDescriptor *)row;
